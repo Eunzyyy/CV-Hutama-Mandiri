@@ -1,0 +1,444 @@
+// prisma/schema.prisma - SAFE INCREMENTAL UPDATE
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  name          String
+  phone         String?
+  phoneNumber   String?
+  address       String?
+  password      String
+  role          Role      @default(CUSTOMER)
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts                     Account[]
+  sessions                     Session[]
+  orders                       Order[]
+  reviews                      Review[]
+  notifications                Notification[]
+  verifiedPayments             Payment[] @relation(name: "PaymentVerifier")
+  cart                         Cart?
+  userNotificationSettings     UserNotificationSettings?
+
+  // ✅ CHAT RELATIONS - UPDATED SAFELY
+  customerConversations        Conversation[] @relation("CustomerConversations")
+  adminConversations           Conversation[] @relation("AdminConversations") 
+  financeConversations         Conversation[] @relation("FinanceConversations")
+  deletedConversations         Conversation[] @relation("DeletedConversations") // ✅ NEW RELATION
+  sentMessages                 Message[] @relation("SentMessages")
+
+  @@map("users")
+}
+
+// Semua model lain tetap sama sampai ke Chat models...
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            Int
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       Int
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+enum Role {
+  ADMIN
+  OWNER
+  FINANCE
+  CUSTOMER
+}
+
+enum CategoryType {
+  PRODUCT
+  SERVICE
+}
+
+model Category {
+  id          Int          @id @default(autoincrement())
+  publicId    String       @unique @default(cuid())
+  name        String
+  description String?
+  type        CategoryType
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  products Product[]
+  services Service[]
+
+  @@map("categories")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  publicId    String   @unique @default(cuid())
+  name        String
+  description String
+  price       Float
+  stock       Int
+  sku         String?
+  weight      Float?
+  categoryId  Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category   Category       @relation(fields: [categoryId], references: [id])
+  images     ProductImage[]
+  orderItems OrderItem[]
+  reviews    Review[]
+  cartItems  CartItem[]
+
+  @@map("products")
+}
+
+model ProductImage {
+  id                  Int     @id @default(autoincrement())
+  url                 String
+  cloudinaryPublicId  String?
+  productId           Int
+  product             Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+model Service {
+  id          Int      @id @default(autoincrement())
+  publicId    String   @unique @default(cuid())
+  name        String
+  description String
+  price       Float
+  categoryId  Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category   Category       @relation(fields: [categoryId], references: [id])
+  images     ServiceImage[]
+  orderItems OrderItem[]
+  reviews    Review[]
+  cartItems  CartItem[]
+
+  @@map("services")
+}
+
+model ServiceImage {
+  id                  Int     @id @default(autoincrement())
+  url                 String
+  cloudinaryPublicId  String?
+  serviceId           Int
+  service             Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("service_images")
+}
+
+model Cart {
+  id        Int        @id @default(autoincrement())
+  userId    Int        @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cartItems CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id        Int     @id @default(autoincrement())
+  cartId    Int
+  productId Int?
+  serviceId Int?
+  quantity  Int
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart    Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@map("cart_items")
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  E_WALLET
+  COD
+}
+
+enum PaymentStatus {
+  PENDING
+  PENDING_VERIFICATION
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+  UNPAID
+  PARTIAL
+  COMPLETED
+}
+
+model Order {
+  id               Int           @id @default(autoincrement())
+  orderNumber      String        @unique
+  userId           Int
+  totalAmount      Float
+  status           OrderStatus   @default(PENDING)
+  paymentMethod    PaymentMethod?
+  paymentStatus    PaymentStatus @default(PENDING)
+  shippingAddress  String?
+  notes            String?
+  customerDesign   String?
+  paymentProof     String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+  payments   Payment[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int   @id @default(autoincrement())
+  orderId   Int
+  productId Int?
+  serviceId Int?
+  quantity  Int
+  price     Float
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
+
+  @@map("order_items")
+}
+
+model Payment {
+  id              Int           @id @default(autoincrement())
+  orderId         Int
+  amount          Float
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  transactionId   String?
+  paymentProof    String?
+  proofFileName   String?
+  notes           String?
+  paidAt          DateTime?
+  verifiedAt      DateTime?
+  verifiedBy      Int?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  order    Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  verifier User? @relation(name: "PaymentVerifier", fields: [verifiedBy], references: [id])
+
+  @@map("payments")
+}
+
+model Setting {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int?
+  serviceId Int?
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_UPDATED
+  ORDER_CANCELLED
+  PAYMENT_RECEIVED
+  PAYMENT_CONFIRMED
+  REVIEW_ADDED
+  USER_REGISTERED
+  SYSTEM_ALERT
+  CHAT_MESSAGE // ✅ NEW TYPE
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int?
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model UserNotificationSettings {
+  id                    Int     @id @default(autoincrement())
+  userId                Int     @unique
+  emailNotifications    Boolean @default(true)
+  pushNotifications     Boolean @default(true)
+  smsNotifications      Boolean @default(false)
+  orderUpdates          Boolean @default(true)
+  promotionalEmails     Boolean @default(true)
+  chatNotifications     Boolean @default(true) // ✅ NEW FIELD
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_settings")
+}
+
+// ✅ CHAT MODELS - UPDATED DENGAN FITUR BARU
+
+// ✅ UPDATE CONVERSATION MODEL DENGAN SOFT DELETE
+model Conversation {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  adminId    Int?
+  financeId  Int?
+  subject    String?
+  status     ConversationStatus @default(ACTIVE)
+  
+  // ✅ SOFT DELETE FIELDS - BARU DENGAN DEFAULT VALUES AMAN
+  isDeleted  Boolean  @default(false)
+  deletedBy  Int?
+  deletedAt  DateTime?
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer      User      @relation("CustomerConversations", fields: [customerId], references: [id], onDelete: Cascade)
+  admin         User?     @relation("AdminConversations", fields: [adminId], references: [id], onDelete: SetNull)
+  finance       User?     @relation("FinanceConversations", fields: [financeId], references: [id], onDelete: SetNull)
+  deletedByUser User?     @relation("DeletedConversations", fields: [deletedBy], references: [id], onDelete: SetNull)
+  messages      Message[]
+
+  @@map("conversations")
+}
+
+// ✅ UPDATE MESSAGE MODEL - AMAN
+model Message {
+  id             Int      @id @default(autoincrement())
+  conversationId Int
+  senderId       Int
+  senderType     Role
+  message        String?  @db.Text // ✅ UBAH JADI OPTIONAL (AMAN)
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt // ✅ NEW FIELD
+
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User               @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  attachments  MessageAttachment[] // ✅ NEW RELATION
+
+  @@map("messages")
+}
+
+// ✅ NEW MODEL - MESSAGE ATTACHMENTS
+model MessageAttachment {
+  id               Int            @id @default(autoincrement())
+  messageId        Int
+  fileName         String
+  originalName     String
+  fileUrl          String         @db.Text
+  fileType         AttachmentType
+  fileSize         Int
+  mimeType         String
+  cloudinaryId     String?
+  createdAt        DateTime       @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("message_attachments")
+}
+
+// ✅ NEW ENUM
+enum AttachmentType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  OTHER
+}
+
+enum ConversationStatus {
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
