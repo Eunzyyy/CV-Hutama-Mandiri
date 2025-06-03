@@ -120,7 +120,6 @@ export default function Sidebar({ userRole }: SidebarProps) {
           { name: "Reports", href: "/owner/reports", icon: FileText },
           { name: "System Logs", href: "/owner/logs", icon: Activity },
           { name: "Notifications", href: "/owner/notifications", icon: Bell },
-          { name: "Chat", href: "/owner/chat", icon: MessageCircle }, // ✅ TAMBAH CHAT
           { name: "Settings", href: "/owner/settings", icon: Settings },
         ];
       case "FINANCE":

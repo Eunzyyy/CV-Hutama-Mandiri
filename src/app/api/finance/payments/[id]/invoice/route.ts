@@ -132,7 +132,7 @@ export async function GET(
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    const fakturTitle = 'FAKTUR';
+    const fakturTitle = 'INVOICE';
     const fakturWidth = doc.getTextWidth(fakturTitle);
     doc.text(fakturTitle, (pageWidth - fakturWidth) / 2, titleY);
     
